@@ -1,4 +1,4 @@
-module github.com/xaionaro-go/goroutine
+module github.com/xaionaro-go/gorex
 
 go 1.13
 
