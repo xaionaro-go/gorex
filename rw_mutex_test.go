@@ -461,10 +461,3 @@ func TestRWMutex(t *testing.T) {
 		})
 	})
 }
-
-func TestRWLocker(t *testing.T) {
-	testRWMutex(t, &RWMutex{})
-}
-
-func testRWMutex(t *testing.T, locker *RWMutex) {
-}
