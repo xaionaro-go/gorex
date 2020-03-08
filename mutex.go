@@ -1,4 +1,4 @@
-package goroutine
+package gorex
 
 import (
 	"sync"

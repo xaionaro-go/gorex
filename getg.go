@@ -1,4 +1,4 @@
-package goroutine
+package gorex
 
 import (
 	exposedRuntime "github.com/huandu/go-tls/g"
