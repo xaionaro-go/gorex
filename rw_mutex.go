@@ -185,6 +185,9 @@ func (m *RWMutex) gc() {
 
 func (m *RWMutex) decMyReaders(me *G) {
 	v := m.usedBy[me]
+	if v == nil {
+		panic("RUnlock()-ing not RLock()-ed")
+	}
 	*v--
 	if *v != 0 {
 		return

@@ -1,9 +1,13 @@
 package goroutine
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type locker interface {
@@ -171,76 +175,179 @@ func Benchmark(b *testing.B) {
 	})
 }
 
-func TestRWLocker(t *testing.T) {
-	testRWLocker(t, &RWMutex{})
-}
-
-func testRWLocker(t *testing.T, locker *RWMutex) {
-	locker.Lock()
-	locker.Unlock()
-	locker.Lock()
-	locker.Unlock()
-	locker.RLock()
-	locker.RUnlock()
-
-	var wg sync.WaitGroup
-	wg.Add(200)
-	for i := 0; i < 100; i++ {
-		go func() {
-			locker.Lock()
-			locker.Unlock()
-			wg.Done()
-		}()
-		go func() {
-			locker.RLock()
-			locker.RUnlock()
-			wg.Done()
-		}()
-	}
-
-	wg.Wait()
-
-	wg.Add(200)
-	for i := 0; i < 100; i++ {
-		go func() {
-			locker.Lock()
-			time.Sleep(time.Microsecond)
-			locker.Unlock()
-			wg.Done()
-		}()
-		go func() {
-			locker.RLock()
-			time.Sleep(time.Microsecond)
-			locker.RUnlock()
-			wg.Done()
-		}()
-	}
-
-	wg.Wait()
-
-	locker.RLockDo(func() {
-		locker.LockDo(func() {
-			locker.RLockDo(func() {
+func TestRWMutex(t *testing.T) {
+	t.Run("Unlock", func(t *testing.T) {
+		t.Run("negative", func(t *testing.T) {
+			t.Run("notLocked", func(t *testing.T) {
+				var result interface{}
+				func() {
+					defer func() {
+						result = recover()
+					}()
+					locker := &RWMutex{}
+					locker.RLock()
+					locker.Unlock()
+				}()
+				assert.NotNil(t, result)
+				assert.Equal(t, -1, strings.Index(fmt.Sprint(result), "pointer dereference"), result)
 			})
 		})
 	})
-	locker.LockDo(func() {
-		locker.RLockDo(func() {
+	t.Run("RUnlock", func(t *testing.T) {
+		t.Run("negative", func(t *testing.T) {
+			t.Run("notLocked", func(t *testing.T) {
+				var result interface{}
+				func() {
+					defer func() {
+						result = recover()
+					}()
+					locker := &RWMutex{}
+					locker.Lock()
+					locker.RUnlock()
+				}()
+				assert.NotNil(t, result)
+				assert.Equal(t, -1, strings.Index(fmt.Sprint(result), "pointer dereference"), result)
+			})
+		})
+	})
+	t.Run("LockDo", func(t *testing.T) {
+		locker := &RWMutex{}
+		locker.LockDo(func() {
 			locker.LockDo(func() {
 			})
 		})
-	})
 
-	locker.RLockDo(func() {
+		var wg sync.WaitGroup
+		wg.Add(1)
+		i := 0
+		locker.LockDo(func() {
+			go locker.LockDo(func() {
+				defer wg.Done()
+				i = 2
+			})
+			locker.LockDo(func() {
+				time.Sleep(time.Microsecond)
+				i = 1
+			})
+		})
+
+		wg.Wait()
+		assert.Equal(t, 2, i)
+	})
+	t.Run("RLockDo", func(t *testing.T) {
+		locker := &RWMutex{}
+		locker.RLockDo(func() {
+			locker.RLockDo(func() {
+			})
+		})
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		i := 0
+		locker.RLockDo(func() {
+			go locker.LockDo(func() {
+				defer wg.Done()
+				i = 2
+			})
+			locker.LockDo(func() {
+				time.Sleep(time.Microsecond)
+				i = 1
+			})
+		})
+
+		wg.Wait()
+		assert.Equal(t, 2, i)
+
+		wg.Add(1)
+		locker.LockDo(func() {
+			go locker.RLockDo(func() {
+				defer wg.Done()
+				i = 2
+			})
+			locker.RLockDo(func() {
+				time.Sleep(time.Microsecond)
+				i = 1
+			})
+		})
+
+		wg.Wait()
+		assert.Equal(t, 2, i)
+	})
+	t.Run("extraTests", func(t *testing.T) {
+		locker := &RWMutex{}
+		locker.Lock()
+		locker.Unlock()
+		locker.Lock()
+		locker.Unlock()
+		locker.RLock()
+		locker.RUnlock()
+
+		var wg sync.WaitGroup
+		wg.Add(200)
+		for i := 0; i < 100; i++ {
+			go func() {
+				locker.Lock()
+				locker.Unlock()
+				wg.Done()
+			}()
+			go func() {
+				locker.RLock()
+				locker.RUnlock()
+				wg.Done()
+			}()
+		}
+
+		wg.Wait()
+
+		wg.Add(200)
+		for i := 0; i < 100; i++ {
+			go func() {
+				locker.Lock()
+				time.Sleep(time.Microsecond)
+				locker.Unlock()
+				wg.Done()
+			}()
+			go func() {
+				locker.RLock()
+				time.Sleep(time.Microsecond)
+				locker.RUnlock()
+				wg.Done()
+			}()
+		}
+
+		wg.Wait()
+
+		locker.RLockDo(func() {
+			locker.LockDo(func() {
+				locker.RLockDo(func() {
+				})
+			})
+		})
 		locker.LockDo(func() {
 			locker.RLockDo(func() {
 				locker.LockDo(func() {
-					locker.RLockDo(func() {
-						locker.LockDo(func() {
+				})
+			})
+		})
+
+		locker.RLockDo(func() {
+			locker.LockDo(func() {
+				locker.RLockDo(func() {
+					locker.LockDo(func() {
+						locker.RLockDo(func() {
+							locker.LockDo(func() {
+							})
 						})
 					})
 				})
 			})
 		})
 	})
+}
+
+func TestRWLocker(t *testing.T) {
+	testRWMutex(t, &RWMutex{})
+}
+
+func testRWMutex(t *testing.T, locker *RWMutex) {
 }
