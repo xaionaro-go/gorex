@@ -130,7 +130,7 @@ PASS
 ok  	github.com/xaionaro-go/goroutine	20.463s
 ```
 
-But sometimes it allows you to think more about strategically problems
+But sometimes it allows you to think more about strategic problems
 ("this stuff should be edited atomically, so I'll be able to...")
 instead of wasting time on tactical problems ("how to handle those locks") :)
 

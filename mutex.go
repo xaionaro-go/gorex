@@ -23,18 +23,15 @@ func (m *Mutex) Lock() {
 	me := GetG()
 
 	for {
-		var monopolizedBy *G
 		m.internalLocker.Lock()
 		if m.monopolizedBy == nil {
 			m.monopolizedBy = me
-			monopolizedBy = me
 			m.monopolizedDepth++
 			m.internalLocker.Unlock()
 			m.backendLocker.Lock()
 			return
 		}
-		monopolizedBy = m.monopolizedBy
-		monopolizedByMe := monopolizedBy == me
+		monopolizedByMe := m.monopolizedBy == me
 		var ch chan struct{}
 		if !monopolizedByMe {
 			if m.monopolizedDone == nil {
