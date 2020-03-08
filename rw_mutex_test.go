@@ -119,11 +119,11 @@ func Benchmark(b *testing.B) {
 			b.Run("sync.RWMutex", func(b *testing.B) {
 				benchmarkLockUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
 			})
-			b.Run("Locker", func(b *testing.B) {
-				benchmarkLockUnlock(b, &Locker{})
+			b.Run("Mutex", func(b *testing.B) {
+				benchmarkLockUnlock(b, &Mutex{})
 			})
-			b.Run("RWLocker", func(b *testing.B) {
-				benchmarkLockUnlock(b, &RWLocker{})
+			b.Run("RWMutex", func(b *testing.B) {
+				benchmarkLockUnlock(b, &RWMutex{})
 			})
 		})
 		b.Run("parallel", func(b *testing.B) {
@@ -133,11 +133,11 @@ func Benchmark(b *testing.B) {
 			b.Run("sync.RWMutex", func(b *testing.B) {
 				benchmarkParallelLockUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
 			})
-			b.Run("Locker", func(b *testing.B) {
-				benchmarkParallelLockUnlock(b, &Locker{})
+			b.Run("Mutex", func(b *testing.B) {
+				benchmarkParallelLockUnlock(b, &Mutex{})
 			})
-			b.Run("RWLocker", func(b *testing.B) {
-				benchmarkParallelLockUnlock(b, &RWLocker{})
+			b.Run("RWMutex", func(b *testing.B) {
+				benchmarkParallelLockUnlock(b, &RWMutex{})
 			})
 		})
 	})
@@ -146,45 +146,45 @@ func Benchmark(b *testing.B) {
 			b.Run("sync.RWMutex", func(b *testing.B) {
 				benchmarkRLockRUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
 			})
-			b.Run("RWLocker", func(b *testing.B) {
-				benchmarkRLockRUnlock(b, &RWLocker{})
+			b.Run("RWMutex", func(b *testing.B) {
+				benchmarkRLockRUnlock(b, &RWMutex{})
 			})
 		})
 		b.Run("parallel", func(b *testing.B) {
 			b.Run("sync.RWMutex", func(b *testing.B) {
 				benchmarkParallelRLockRUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
 			})
-			b.Run("RWLocker", func(b *testing.B) {
-				benchmarkParallelRLockRUnlock(b, &RWLocker{})
+			b.Run("RWMutex", func(b *testing.B) {
+				benchmarkParallelRLockRUnlock(b, &RWMutex{})
 			})
 		})
 	})
 	b.Run("Lock-ed:Lock-Unlock", func(b *testing.B) {
 		b.Run("single", func(b *testing.B) {
-			b.Run("Locker", func(b *testing.B) {
-				benchmarkLockedLockUnlock(b, &Locker{})
+			b.Run("Mutex", func(b *testing.B) {
+				benchmarkLockedLockUnlock(b, &Mutex{})
 			})
-			b.Run("RWLocker", func(b *testing.B) {
-				benchmarkLockedLockUnlock(b, &RWLocker{})
+			b.Run("RWMutex", func(b *testing.B) {
+				benchmarkLockedLockUnlock(b, &RWMutex{})
 			})
 		})
 	})
 	b.Run("RLock-ed:RLock-RUnlock", func(b *testing.B) {
 		b.Run("single", func(b *testing.B) {
-			b.Run("RWLocker", func(b *testing.B) {
-				benchmarkRLockedRLockRUnlock(b, &RWLocker{})
+			b.Run("RWMutex", func(b *testing.B) {
+				benchmarkRLockedRLockRUnlock(b, &RWMutex{})
 			})
 		})
 		b.Run("parallel", func(b *testing.B) {
-			b.Run("RWLocker", func(b *testing.B) {
-				benchmarkRLockedParallelRLockRUnlock(b, &RWLocker{})
+			b.Run("RWMutex", func(b *testing.B) {
+				benchmarkRLockedParallelRLockRUnlock(b, &RWMutex{})
 			})
 		})
 	})
 }
 
 func TestRWLocker(t *testing.T) {
-	testRWLocker(t, &RWLocker{})
+	testRWLocker(t, &RWMutex{})
 }
 
 func testRWLocker(t *testing.T, locker rwLocker) {

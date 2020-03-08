@@ -6,26 +6,26 @@ import (
 	"github.com/xaionaro-go/spinlock"
 )
 
-type Locker struct {
+type Mutex struct {
 	backendLocker   sync.Mutex
 	internalLocker  spinlock.Locker
 	monopolizedBy   *g
 	monopolizedDone chan struct{}
 }
 
-func (locker *Locker) LockDo(fn func()) {
+func (m *Mutex) LockDo(fn func()) {
 	me := GetG()
 
 	var monopolizedByWasSetHere bool
 	defer func() {
-		locker.internalLocker.Lock()
+		m.internalLocker.Lock()
 		if monopolizedByWasSetHere {
-			locker.monopolizedBy = nil
-			locker.backendLocker.Unlock()
+			m.monopolizedBy = nil
+			m.backendLocker.Unlock()
 		}
-		chPtr := locker.monopolizedDone
-		locker.monopolizedDone = nil
-		locker.internalLocker.Unlock()
+		chPtr := m.monopolizedDone
+		m.monopolizedDone = nil
+		m.internalLocker.Unlock()
 		if chPtr == nil {
 			return
 		}
@@ -34,25 +34,25 @@ func (locker *Locker) LockDo(fn func()) {
 
 	for {
 		var monopolizedBy *g
-		locker.internalLocker.Lock()
-		if locker.monopolizedBy == nil {
-			locker.monopolizedBy = me
+		m.internalLocker.Lock()
+		if m.monopolizedBy == nil {
+			m.monopolizedBy = me
 			monopolizedBy = me
 			monopolizedByWasSetHere = true
-			locker.internalLocker.Unlock()
+			m.internalLocker.Unlock()
 			break
 		} else {
-			monopolizedBy = locker.monopolizedBy
+			monopolizedBy = m.monopolizedBy
 		}
 		monopolizedByMe := monopolizedBy == me
 		var ch chan struct{}
 		if !monopolizedByMe {
-			if locker.monopolizedDone == nil {
-				locker.monopolizedDone = make(chan struct{})
+			if m.monopolizedDone == nil {
+				m.monopolizedDone = make(chan struct{})
 			}
-			ch = locker.monopolizedDone
+			ch = m.monopolizedDone
 		}
-		locker.internalLocker.Unlock()
+		m.internalLocker.Unlock()
 		if monopolizedByMe {
 			break
 		}
@@ -62,7 +62,7 @@ func (locker *Locker) LockDo(fn func()) {
 	}
 
 	if monopolizedByWasSetHere {
-		locker.backendLocker.Lock()
+		m.backendLocker.Lock()
 	}
 
 	fn()

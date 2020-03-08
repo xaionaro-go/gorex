@@ -1,14 +1,14 @@
-# Goroutine tools
+# gorex
 
-## Locker
+###`gorex == GORoutine mutual EXclusion`
 
-This package implements `Locker` and `RWLocker`. They are similar to `sync.Mutex` and `sync.RWMutex`, but
-they track which goroutine locked the locker and will not cause a deadlock if
-a goroutine will try to lock something it already locked previously.
+This package implements `Mutex` and `RWMutex`. They are similar to `sync.Mutex` and `sync.RWMutex`, but
+they track which goroutine locked the mutex and will not cause a deadlock if
+the same goroutine will try to lock the same mutex again.
 
 ```go
 type myEntity struct {
-    goroutine.Locker
+    gorex.Mutex
 }
 
 func (ent *myEntity) func1() {
@@ -27,7 +27,7 @@ func (ent *myEntity) func2() {
 ```
 
 ```go
-locker := &goroutine.RWLocker{}
+locker := &goroutine.RWMutex{}
 
 locker.RLockDo(func() {
     .. do some read-only stuff ..
@@ -44,7 +44,7 @@ locker.RLockDo(func() {
 
 But you still will get a deadlock if you do this way:
 ```go
-var locker = &goroutine.RWLocker{}
+var locker = &gorex.RWMutex{}
 
 func someFunc() {
     locker.RLockDo(func() {
@@ -76,24 +76,24 @@ It's essentially slower than bare `sync.Mutex`/`sync.RWMutex`:
 goos: linux
 goarch: amd64
 pkg: github.com/xaionaro-go/goroutine
-Benchmark/Lock-Unlock/single/sync.Mutex-8         	33510717	        35.4 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/single/sync.RWMutex-8       	29253985	        41.2 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/single/Locker-8             	20195449	        59.5 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/single/RWLocker-8           	12731053	        93.8 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/sync.Mutex-8       	 9247928	       131 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/sync.RWMutex-8     	 7582437	       158 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/Locker-8           	 8368058	       182 ns/op	       5 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/RWLocker-8         	 4653135	       255 ns/op	       6 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/single/sync.RWMutex-8     	33995299	        35.9 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/single/RWLocker-8         	18515317	        64.1 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/parallel/sync.RWMutex-8   	23826394	        50.3 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/parallel/RWLocker-8       	 8961405	       141 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-ed:Lock-Unlock/single/Locker-8     	24920245	        47.2 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-ed:Lock-Unlock/single/RWLocker-8   	24562058	        48.2 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-ed:RLock-RUnlock/single/RWLocker-8         	19546357	        60.9 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-ed:RLock-RUnlock/parallel/RWLocker-8       	 7760634	       159 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/single/sync.Mutex-8         	33334248	        35.6 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/single/sync.RWMutex-8       	28840336	        41.5 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/single/Mutex-8              	19785918	        61.2 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/single/RWMutex-8            	12316568	        94.3 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/sync.Mutex-8       	 9204102	       129 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/sync.RWMutex-8     	 7640816	       158 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/Mutex-8            	 7252591	       158 ns/op	       4 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/RWMutex-8          	 4778331	       239 ns/op	       6 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/single/sync.RWMutex-8     	34093424	        35.5 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/single/RWMutex-8          	18106015	        64.6 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/parallel/sync.RWMutex-8   	24507448	        46.4 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/parallel/RWMutex-8        	 9100104	       133 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-ed:Lock-Unlock/single/Mutex-8      	22485800	        47.4 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-ed:Lock-Unlock/single/RWMutex-8    	24491390	        48.7 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-ed:RLock-RUnlock/single/RWMutex-8 	19400768	        61.5 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-ed:RLock-RUnlock/parallel/RWMutex-8         	 8251312	       151 ns/op	       0 B/op	       0 allocs/op
 PASS
-ok  	github.com/xaionaro-go/goroutine	21.128s
+ok  	github.com/xaionaro-go/goroutine	20.463s
 ```
 
 But sometimes it allows you to think more about strategically problems
