@@ -7,30 +7,15 @@ import (
 )
 
 type Mutex struct {
-	backendLocker   sync.Mutex
-	internalLocker  spinlock.Locker
-	monopolizedBy   *g
-	monopolizedDone chan struct{}
+	backendLocker    sync.Mutex
+	internalLocker   spinlock.Locker
+	monopolizedBy    *g
+	monopolizedDepth int
+	monopolizedDone  chan struct{}
 }
 
-func (m *Mutex) LockDo(fn func()) {
+func (m *Mutex) Lock() {
 	me := GetG()
-
-	var monopolizedByWasSetHere bool
-	defer func() {
-		m.internalLocker.Lock()
-		if monopolizedByWasSetHere {
-			m.monopolizedBy = nil
-			m.backendLocker.Unlock()
-		}
-		chPtr := m.monopolizedDone
-		m.monopolizedDone = nil
-		m.internalLocker.Unlock()
-		if chPtr == nil {
-			return
-		}
-		close(chPtr)
-	}()
 
 	for {
 		var monopolizedBy *g
@@ -38,9 +23,10 @@ func (m *Mutex) LockDo(fn func()) {
 		if m.monopolizedBy == nil {
 			m.monopolizedBy = me
 			monopolizedBy = me
-			monopolizedByWasSetHere = true
+			m.monopolizedDepth++
 			m.internalLocker.Unlock()
-			break
+			m.backendLocker.Lock()
+			return
 		} else {
 			monopolizedBy = m.monopolizedBy
 		}
@@ -52,18 +38,43 @@ func (m *Mutex) LockDo(fn func()) {
 			}
 			ch = m.monopolizedDone
 		}
+		if monopolizedByMe {
+			m.monopolizedDepth++
+		}
 		m.internalLocker.Unlock()
 		if monopolizedByMe {
-			break
+			return
 		}
 		select {
 		case <-ch:
 		}
 	}
+}
 
-	if monopolizedByWasSetHere {
-		m.backendLocker.Lock()
+func (m *Mutex) Unlock() {
+	me := GetG()
+	m.internalLocker.Lock()
+	if me != m.monopolizedBy {
+		m.internalLocker.Unlock()
+		panic("I'm not the one, who locked this mutex")
 	}
+	m.monopolizedDepth--
+	if m.monopolizedDepth == 0 {
+		m.monopolizedBy = nil
+		m.backendLocker.Unlock()
+	}
+	chPtr := m.monopolizedDone
+	m.monopolizedDone = nil
+	m.internalLocker.Unlock()
+	if chPtr == nil {
+		return
+	}
+	close(chPtr)
+}
+
+func (m *Mutex) LockDo(fn func()) {
+	m.Lock()
+	defer m.Unlock()
 
 	fn()
 }

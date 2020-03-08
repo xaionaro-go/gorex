@@ -1,11 +1,34 @@
 # gorex
 
-###`gorex == GORoutine mutual EXclusion`
+### `gorex == GORoutine mutual EXclusion`
 
 This package implements `Mutex` and `RWMutex`. They are similar to `sync.Mutex` and `sync.RWMutex`, but
 they track which goroutine locked the mutex and will not cause a deadlock if
 the same goroutine will try to lock the same mutex again.
 
+```go
+type myEntity struct {
+    gorex.Mutex
+}
+
+func (ent *myEntity) func1() {
+    ent.Lock()
+    defer ent.Unlock()
+
+    .. some stuff ..
+    ent.func2() // will not get a deadlock here!
+    .. other stuff ..
+}
+
+func (ent *myEntity) func2() {
+    ent.Lock()
+    defer ent.Unlock()
+
+    .. more stuff ..
+}
+```
+
+The same in other syntax:
 ```go
 type myEntity struct {
     gorex.Mutex
@@ -65,8 +88,8 @@ func main() {
 ```
 because there could be a situation that a resource is blocked by a `RLockDo` from
 both goroutines and both goroutines waits (on `LockDo`) until other goroutine
-will finish `RLockDo`. On the other side you will easily see this `LockDo`'s in the
-call stack trace.
+will finish `RLockDo`. But still you will easily see the reason of deadlocks due
+to `LockDo`-s in the call stack trace.
 
 #### Benchmark
 

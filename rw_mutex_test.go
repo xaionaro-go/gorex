@@ -6,68 +6,49 @@ import (
 	"time"
 )
 
-type lockerWrapper struct {
-	sync.Mutex
-}
-
-func (w *lockerWrapper) LockDo(fn func()) {
-	w.Lock()
-	defer w.Unlock()
-
-	fn()
-}
-
-type rwLockerWrapper struct {
-	sync.RWMutex
-}
-
-func (w *rwLockerWrapper) LockDo(fn func()) {
-	w.Lock()
-	defer w.Unlock()
-
-	fn()
-}
-func (w *rwLockerWrapper) RLockDo(fn func()) {
-	w.RLock()
-	defer w.RUnlock()
-
-	fn()
-}
-
 type locker interface {
-	LockDo(func())
+	sync.Locker
 }
 type rwLocker interface {
 	locker
-	RLockDo(func())
+	RLock()
+	RUnlock()
 }
 
 func benchmarkLockUnlock(b *testing.B, locker locker) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		locker.LockDo(func() {})
+		locker.Lock()
+		locker.Unlock()
 	}
 }
 
 func benchmarkLockedLockUnlock(b *testing.B, locker locker) {
-	locker.LockDo(func() {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			locker.LockDo(func() {})
-		}
-	})
+	locker.Lock()
+	defer locker.Unlock()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		locker.Lock()
+		locker.Unlock()
+	}
+
+	b.StopTimer()
 }
 
 func benchmarkRLockedRLockRUnlock(b *testing.B, locker rwLocker) {
-	locker.RLockDo(func() {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			locker.RLockDo(func() {})
-		}
-	})
+	locker.RLock()
+	defer locker.RUnlock()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		locker.RLock()
+		locker.RUnlock()
+	}
+	b.StopTimer()
 }
 
 func benchmarkParallelLockUnlock(b *testing.B, locker locker) {
@@ -75,7 +56,8 @@ func benchmarkParallelLockUnlock(b *testing.B, locker locker) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			locker.LockDo(func() {})
+			locker.Lock()
+			locker.Unlock()
 		}
 	})
 }
@@ -84,7 +66,8 @@ func benchmarkRLockRUnlock(b *testing.B, locker rwLocker) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		locker.RLockDo(func() {})
+		locker.RLock()
+		locker.RUnlock()
 	}
 }
 
@@ -93,31 +76,36 @@ func benchmarkParallelRLockRUnlock(b *testing.B, locker rwLocker) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			locker.RLockDo(func() {})
+			locker.RLock()
+			locker.RUnlock()
 		}
 	})
 }
 
 func benchmarkRLockedParallelRLockRUnlock(b *testing.B, locker rwLocker) {
-	locker.RLockDo(func() {
-		b.ReportAllocs()
-		b.ResetTimer()
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				locker.RLockDo(func() {})
-			}
-		})
+	locker.RLock()
+	defer locker.RUnlock()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			locker.RLock()
+			locker.RUnlock()
+		}
 	})
+
+	b.StopTimer()
 }
 
 func Benchmark(b *testing.B) {
 	b.Run("Lock-Unlock", func(b *testing.B) {
 		b.Run("single", func(b *testing.B) {
 			b.Run("sync.Mutex", func(b *testing.B) {
-				benchmarkLockUnlock(b, &lockerWrapper{sync.Mutex{}})
+				benchmarkLockUnlock(b, &sync.Mutex{})
 			})
 			b.Run("sync.RWMutex", func(b *testing.B) {
-				benchmarkLockUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
+				benchmarkLockUnlock(b, &sync.RWMutex{})
 			})
 			b.Run("Mutex", func(b *testing.B) {
 				benchmarkLockUnlock(b, &Mutex{})
@@ -128,10 +116,10 @@ func Benchmark(b *testing.B) {
 		})
 		b.Run("parallel", func(b *testing.B) {
 			b.Run("sync.Mutex", func(b *testing.B) {
-				benchmarkParallelLockUnlock(b, &lockerWrapper{sync.Mutex{}})
+				benchmarkParallelLockUnlock(b, &sync.Mutex{})
 			})
 			b.Run("sync.RWMutex", func(b *testing.B) {
-				benchmarkParallelLockUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
+				benchmarkParallelLockUnlock(b, &sync.RWMutex{})
 			})
 			b.Run("Mutex", func(b *testing.B) {
 				benchmarkParallelLockUnlock(b, &Mutex{})
@@ -144,7 +132,7 @@ func Benchmark(b *testing.B) {
 	b.Run("RLock-RUnlock", func(b *testing.B) {
 		b.Run("single", func(b *testing.B) {
 			b.Run("sync.RWMutex", func(b *testing.B) {
-				benchmarkRLockRUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
+				benchmarkRLockRUnlock(b, &sync.RWMutex{})
 			})
 			b.Run("RWMutex", func(b *testing.B) {
 				benchmarkRLockRUnlock(b, &RWMutex{})
@@ -152,7 +140,7 @@ func Benchmark(b *testing.B) {
 		})
 		b.Run("parallel", func(b *testing.B) {
 			b.Run("sync.RWMutex", func(b *testing.B) {
-				benchmarkParallelRLockRUnlock(b, &rwLockerWrapper{sync.RWMutex{}})
+				benchmarkParallelRLockRUnlock(b, &sync.RWMutex{})
 			})
 			b.Run("RWMutex", func(b *testing.B) {
 				benchmarkParallelRLockRUnlock(b, &RWMutex{})
@@ -187,20 +175,25 @@ func TestRWLocker(t *testing.T) {
 	testRWLocker(t, &RWMutex{})
 }
 
-func testRWLocker(t *testing.T, locker rwLocker) {
-	locker.LockDo(func() {})
-	locker.LockDo(func() {})
-	locker.RLockDo(func() {})
+func testRWLocker(t *testing.T, locker *RWMutex) {
+	locker.Lock()
+	locker.Unlock()
+	locker.Lock()
+	locker.Unlock()
+	locker.RLock()
+	locker.RUnlock()
 
 	var wg sync.WaitGroup
 	wg.Add(200)
 	for i := 0; i < 100; i++ {
 		go func() {
-			locker.LockDo(func() {})
+			locker.Lock()
+			locker.Unlock()
 			wg.Done()
 		}()
 		go func() {
-			locker.RLockDo(func() {})
+			locker.RLock()
+			locker.RUnlock()
 			wg.Done()
 		}()
 	}
@@ -210,15 +203,15 @@ func testRWLocker(t *testing.T, locker rwLocker) {
 	wg.Add(200)
 	for i := 0; i < 100; i++ {
 		go func() {
-			locker.LockDo(func() {
-				time.Sleep(time.Microsecond)
-			})
+			locker.Lock()
+			time.Sleep(time.Microsecond)
+			locker.Unlock()
 			wg.Done()
 		}()
 		go func() {
-			locker.RLockDo(func() {
-				time.Sleep(time.Microsecond)
-			})
+			locker.RLock()
+			time.Sleep(time.Microsecond)
+			locker.RUnlock()
 			wg.Done()
 		}()
 	}

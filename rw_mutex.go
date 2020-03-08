@@ -16,14 +16,15 @@ const (
 type RWMutex struct {
 	lazyInitOnce sync.Once
 
-	usedDone        chan struct{}
-	monopolizedDone chan struct{}
+	usedDone         chan struct{}
+	monopolizedDone  chan struct{}
+	monopolizedDepth int
+	monopolizedBy    *g
 
 	state          int64
 	backendLocker  sync.Mutex
 	internalLocker spinlock.Locker
 	usedBy         map[*g]*int64
-	monopolizedBy  *g
 }
 
 func (m *RWMutex) lazyInit() {
@@ -32,28 +33,9 @@ func (m *RWMutex) lazyInit() {
 	})
 }
 
-func (m *RWMutex) LockDo(fn func()) {
+func (m *RWMutex) Lock() {
 	m.lazyInit()
-
 	me := GetG()
-
-	var monopolizedByWasSetHere bool
-	defer func() {
-		m.internalLocker.Lock()
-		if monopolizedByWasSetHere {
-			m.monopolizedBy = nil
-			m.backendLocker.Unlock()
-			m.state -= blockedByWriter
-		}
-
-		chPtr := m.monopolizedDone
-		m.monopolizedDone = nil
-		m.internalLocker.Unlock()
-		if chPtr == nil {
-			return
-		}
-		close(chPtr)
-	}()
 
 	for {
 		var monopolizedBy *g
@@ -61,9 +43,11 @@ func (m *RWMutex) LockDo(fn func()) {
 		if m.monopolizedBy == nil {
 			m.monopolizedBy = me
 			monopolizedBy = me
-			monopolizedByWasSetHere = true
+			m.monopolizedDepth++
 			m.internalLocker.Unlock()
-			break
+			m.backendLocker.Lock()
+			m.setStateBlockedByWriter(me)
+			return
 		} else {
 			monopolizedBy = m.monopolizedBy
 		}
@@ -75,18 +59,47 @@ func (m *RWMutex) LockDo(fn func()) {
 			}
 			ch = m.monopolizedDone
 		}
+		if monopolizedByMe {
+			m.monopolizedDepth++
+		}
 		m.internalLocker.Unlock()
 		if monopolizedByMe {
-			break
+			return
 		}
 		select {
 		case <-ch:
 		}
 	}
-	if monopolizedByWasSetHere {
-		m.backendLocker.Lock()
-		m.setStateBlockedByWriter(me)
+}
+
+func (m *RWMutex) Unlock() {
+	me := GetG()
+
+	m.internalLocker.Lock()
+	if me != m.monopolizedBy {
+		m.internalLocker.Unlock()
+		panic("I'm not the one, who locked this mutex")
 	}
+	m.monopolizedDepth--
+	if m.monopolizedDepth == 0 {
+		m.monopolizedBy = nil
+		m.backendLocker.Unlock()
+		m.state -= blockedByWriter
+	}
+
+	chPtr := m.monopolizedDone
+	m.monopolizedDone = nil
+	m.internalLocker.Unlock()
+	if chPtr == nil {
+		return
+	}
+	close(chPtr)
+
+}
+
+func (m *RWMutex) LockDo(fn func()) {
+	m.Lock()
+	defer m.Unlock()
 
 	fn()
 }
@@ -180,9 +193,8 @@ func (m *RWMutex) decMyReaders(me *g) {
 	int64Pool.Put(v)
 }
 
-func (m *RWMutex) RLockDo(fn func()) {
+func (m *RWMutex) RLock() {
 	m.lazyInit()
-
 	me := GetG()
 
 	for {
@@ -212,12 +224,20 @@ func (m *RWMutex) RLockDo(fn func()) {
 	m.incMyReaders(me)
 	m.internalLocker.Unlock()
 
-	defer func() {
-		m.internalLocker.Lock()
-		m.state--
-		m.decMyReaders(me)
-		m.internalLocker.Unlock()
-	}()
+}
+
+func (m *RWMutex) RUnlock() {
+	me := GetG()
+
+	m.internalLocker.Lock()
+	m.state--
+	m.decMyReaders(me)
+	m.internalLocker.Unlock()
+}
+
+func (m *RWMutex) RLockDo(fn func()) {
+	m.RLock()
+	defer m.RUnlock()
 
 	fn()
 }
