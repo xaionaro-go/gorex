@@ -145,7 +145,7 @@ I recommend you to use `LockDo` instead of bare `Lock` when possible:
 If you already have a problem with a deadlock, then I recommend you to write
 and unit/integration test which can reproduce the deadlock situation and then
 limit by time [`gorex.InfinityContext`](https://pkg.go.dev/github.com/xaionaro-go/gorex?tab=doc#pkg-variables).
-On a deadlock it will panic at show the call stack trace of every routine
+On a deadlock it will panic and will show the call stack trace of every routine
 which holds the lock.
 
 For example in my case I saw:
