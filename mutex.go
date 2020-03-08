@@ -39,8 +39,6 @@ func (m *Mutex) LockCtx(ctx context.Context) bool {
 	return m.lock(ctx, true)
 }
 
-var infiniteContext = context.Background()
-
 func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
 	me := GetG()
 
@@ -72,11 +70,14 @@ func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
 			return false
 		}
 		if ctx == nil {
-			ctx = infiniteContext
+			ctx = InfiniteContext
 		}
 		select {
 		case <-ch:
 		case <-ctx.Done():
+			if ctx == InfiniteContext {
+				m.debugPanic()
+			}
 			return false
 		}
 	}
@@ -141,4 +142,10 @@ func (m *Mutex) LockCtxDo(ctx context.Context, fn func()) (success bool) {
 	success = true
 	fn()
 	return
+}
+
+func (m *Mutex) debugPanic() {
+	m.internalLocker.Lock()
+	defer m.internalLocker.Unlock()
+	debugPanic(m, m.monopolizedBy, nil)
 }

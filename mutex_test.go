@@ -29,28 +29,59 @@ func TestMutex(t *testing.T) {
 		})
 	})
 	t.Run("LockDo", func(t *testing.T) {
-		locker := &Mutex{}
-		locker.LockDo(func() {
+		t.Run("positive", func(t *testing.T) {
+			locker := &Mutex{}
 			locker.LockDo(func() {
+				locker.LockDo(func() {
+				})
+			})
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			i := 0
+			locker.LockDo(func() {
+				go locker.LockDo(func() {
+					defer wg.Done()
+					i = 2
+				})
+				locker.LockDo(func() {
+					time.Sleep(time.Microsecond)
+					i = 1
+				})
+			})
+
+			wg.Wait()
+			assert.Equal(t, 2, i)
+		})
+		t.Run("negative", func(t *testing.T) {
+			t.Run("endOfInfinityContext", func(t *testing.T) {
+				var cancelFn context.CancelFunc
+				InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
+				defer cancelFn()
+
+				var result interface{}
+				func() {
+					defer func() {
+						result = recover()
+					}()
+
+					locker := &Mutex{}
+					var wg0 sync.WaitGroup
+					var wg1 sync.WaitGroup
+					wg0.Add(1)
+					wg1.Add(1)
+					go locker.LockDo(func() {
+						wg1.Done()
+						wg0.Wait()
+					})
+					wg1.Wait()
+					locker.Lock()
+				}()
+
+				InfiniteContext = context.Background()
+				assert.NotNil(t, result, result)
 			})
 		})
-
-		var wg sync.WaitGroup
-		wg.Add(1)
-		i := 0
-		locker.LockDo(func() {
-			go locker.LockDo(func() {
-				defer wg.Done()
-				i = 2
-			})
-			locker.LockDo(func() {
-				time.Sleep(time.Microsecond)
-				i = 1
-			})
-		})
-
-		wg.Wait()
-		assert.Equal(t, 2, i)
 	})
 	t.Run("LockTryDo", func(t *testing.T) {
 		t.Run("true", func(t *testing.T) {

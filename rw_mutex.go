@@ -62,10 +62,6 @@ func (m *RWMutex) lock(ctx context.Context, shouldWait bool) bool {
 	m.lazyInit()
 	me := GetG()
 
-	if ctx == nil {
-		ctx = infiniteContext
-	}
-
 	for {
 		m.internalLocker.Lock()
 		if m.monopolizedBy == nil {
@@ -94,9 +90,15 @@ func (m *RWMutex) lock(ctx context.Context, shouldWait bool) bool {
 		if !shouldWait {
 			return false
 		}
+		if ctx == nil {
+			ctx = InfiniteContext
+		}
 		select {
 		case <-ch:
 		case <-ctx.Done():
+			if ctx == InfiniteContext {
+				m.debugPanic()
+			}
 			return false
 		}
 	}
@@ -283,9 +285,6 @@ func (m *RWMutex) RLockCtx(ctx context.Context) bool {
 func (m *RWMutex) rLock(ctx context.Context, shouldWait bool) bool {
 	m.lazyInit()
 	me := GetG()
-	if ctx == nil {
-		ctx = infiniteContext
-	}
 
 	for {
 		m.internalLocker.Lock()
@@ -311,9 +310,15 @@ func (m *RWMutex) rLock(ctx context.Context, shouldWait bool) bool {
 		ch := m.monopolizedDone
 		m.internalLocker.Unlock()
 
+		if ctx == nil {
+			ctx = InfiniteContext
+		}
 		select {
 		case <-ch:
 		case <-ctx.Done():
+			if ctx == InfiniteContext {
+				m.debugPanic()
+			}
 			return false
 		}
 	}
@@ -370,4 +375,10 @@ func (m *RWMutex) RLockCtxDo(ctx context.Context, fn func()) (success bool) {
 	success = true
 	fn()
 	return
+}
+
+func (m *RWMutex) debugPanic() {
+	m.internalLocker.Lock()
+	defer m.internalLocker.Unlock()
+	debugPanic(m, m.monopolizedBy, m.usedBy)
 }
