@@ -100,7 +100,7 @@ func (m *RWMutex) Unlock() {
 
 }
 
-// LockDo is a wrapper around Lock() and Unlock.
+// LockDo is a wrapper around Lock and Unlock.
 // It's a handy function to see in the call stack trace which locker where was locked.
 // Also it's handy not to forget to unlock the locker.
 func (m *RWMutex) LockDo(fn func()) {
@@ -248,7 +248,7 @@ func (m *RWMutex) RUnlock() {
 	m.internalLocker.Unlock()
 }
 
-// RLockDo is a wrapper around RLock() and RUnlock.
+// RLockDo is a wrapper around RLock and RUnlock.
 // It's a handy function to see in the call stack trace which locker where was locked.
 // Also it's handy not to forget to unlock the locker.
 func (m *RWMutex) RLockDo(fn func()) {

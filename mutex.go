@@ -75,7 +75,7 @@ func (m *Mutex) Unlock() {
 	close(chPtr)
 }
 
-// LockDo is a wrapper around Lock() and Unlock.
+// LockDo is a wrapper around Lock and Unlock.
 // It's a handy function to see in the call stack trace which locker where was locked.
 // Also it's handy not to forget to unlock the locker.
 func (m *Mutex) LockDo(fn func()) {
