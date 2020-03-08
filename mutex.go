@@ -48,6 +48,7 @@ func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
 			m.monopolizedBy = me
 			m.monopolizedDepth++
 			m.internalLocker.Unlock()
+			goroutineOpenedLock(m, true)
 			m.backendLocker.Lock()
 			return true
 		}
@@ -95,6 +96,7 @@ func (m *Mutex) Unlock() {
 	m.monopolizedDepth--
 	if m.monopolizedDepth == 0 {
 		m.monopolizedBy = nil
+		goroutineClosedLock(m, true)
 		m.backendLocker.Unlock()
 	}
 	chPtr := m.monopolizedDone

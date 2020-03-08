@@ -3,6 +3,7 @@ package gorex
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"sync"
 	"testing"
@@ -55,6 +56,8 @@ func TestMutex(t *testing.T) {
 		})
 		t.Run("negative", func(t *testing.T) {
 			t.Run("endOfInfinityContext", func(t *testing.T) {
+				debugPanicOut = ioutil.Discard
+
 				var cancelFn context.CancelFunc
 				InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
 				defer cancelFn()

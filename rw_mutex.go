@@ -69,6 +69,7 @@ func (m *RWMutex) lock(ctx context.Context, shouldWait bool) bool {
 			m.monopolizedDepth++
 			m.internalLocker.Unlock()
 			m.backendLocker.Lock()
+			goroutineOpenedLock(m, true)
 			m.setStateBlockedByWriter(me)
 			return true
 		}
@@ -118,6 +119,7 @@ func (m *RWMutex) Unlock() {
 	if m.monopolizedDepth == 0 {
 		m.monopolizedBy = nil
 		m.backendLocker.Unlock()
+		goroutineClosedLock(m, true)
 		m.state -= blockedByWriter
 	}
 
@@ -222,6 +224,7 @@ var int64Pool = &int64PoolT{}
 func (m *RWMutex) incMyReaders(me *G) {
 	if v := m.usedBy[me]; v == nil {
 		m.usedBy[me] = int64Pool.get()
+		goroutineOpenedLock(m, false)
 	} else {
 		*v++
 	}
@@ -239,6 +242,7 @@ func (m *RWMutex) gc() {
 			continue
 		}
 		delete(m.usedBy, k)
+		int64Pool.put(v)
 	}
 }
 
@@ -251,6 +255,7 @@ func (m *RWMutex) decMyReaders(me *G) {
 	if *v != 0 {
 		return
 	}
+	goroutineClosedLock(m, false)
 	m.gc()
 	ch := m.usedDone
 	if ch == nil {
@@ -258,7 +263,6 @@ func (m *RWMutex) decMyReaders(me *G) {
 	}
 	close(ch)
 	m.usedDone = nil
-	int64Pool.put(v)
 }
 
 // RLock is analog of `(*sync.RWMutex)`.RLock, but it allows one goroutine

@@ -134,6 +134,45 @@ But sometimes it allows you to think more about strategic problems
 ("this stuff should be edited atomically, so I'll be able to...")
 instead of wasting time on tactical problems ("how to handle those locks") :)
 
+## If you still have a Deadlock...
+
+Of course this package does not solve all possible reasons of deadlocks,
+but it also provides a way to debug what's going on. First of all,
+I recommend you to use `LockDo` instead of bare `Lock` when possible:
+* It will make sure you haven't forgot to unlock the mutex.
+* It will be shown in the call stack trace (so you'll see what's going on).
+
+If you already have a problem with a deadlock, then I recommend you to write
+and unit/integration test which can reproduce the deadlock situation and then
+limit by time [`gorex.InfinityContext`](https://pkg.go.dev/github.com/xaionaro-go/gorex?tab=doc#pkg-variables).
+On a deadlock it will panic at show the call stack trace of every routine
+which holds the lock.
+
+For example in my case I saw:
+```
+monopolized by:
+/home/xaionaro/.gimme/versions/go1.13.linux.amd64/src/runtime/proc.go:2664 (runtime.goexit1)
+panic: The InfinityContext is done...
+```
+So it seems a routine already exited (and never released the lock). So a support
+of the build tag `deadlockdebug` was added, which will print a call
+stack trace of a lock which was never released (and goroutine already exited). Specifically
+in my case it printed:
+```
+$ go test ./... -timeout 1s -bench=. -benchtime=100ms -tags deadlockdebug
+...
+an opened lock {LockerPtr:824636154976 IsWrite:true} which was never released (and the goroutine already exited):
+/home/xaionaro/go/pkg/mod/github.com/xaionaro-go/gorex@v0.0.0-20200308222358-b650fa4b5b14/rw_mutex.go:72 (github.com/xaionaro-go/gorex.(*RWMutex).lock)
+/home/xaionaro/go/pkg/mod/github.com/xaionaro-go/gorex@v0.0.0-20200308222358-b650fa4b5b14/rw_mutex.go:43 (github.com/xaionaro-go/gorex.(*RWMutex).Lock)
+/home/xaionaro/go/src/github.com/xaionaro-go/secureio/session.go:1480 (github.com/xaionaro-go/secureio.(*Session).sendDelayedNow)
+/home/xaionaro/go/src/github.com/xaionaro-go/secureio/session.go:1774 (github.com/xaionaro-go/secureio.(*Session).startKeyExchange.func2)
+/home/xaionaro/go/src/github.com/xaionaro-go/secureio/key_exchanger.go:449 (github.com/xaionaro-go/secureio.(*keyExchanger).sendSuccessNotifications)
+/home/xaionaro/go/src/github.com/xaionaro-go/secureio/key_exchanger.go:408 (github.com/xaionaro-go/secureio.(*keyExchanger).Handle.func2)
+/home/xaionaro/go/src/github.com/xaionaro-go/secureio/key_exchanger.go:242 (github.com/xaionaro-go/secureio.(*keyExchanger).LockDo)
+...
+```
+So I opened line `session.go:1480` added `defer sess.delayedWriteBuf.Unlock()` and it fixed the problem :)
+
 ## Comparison with other implementations
 
 I found 2 other implementations:
