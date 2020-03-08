@@ -1,6 +1,7 @@
 package gorex
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -50,5 +51,63 @@ func TestMutex(t *testing.T) {
 
 		wg.Wait()
 		assert.Equal(t, 2, i)
+	})
+	t.Run("LockTryDo", func(t *testing.T) {
+		t.Run("true", func(t *testing.T) {
+			locker := &Mutex{}
+			i := 0
+			assert.True(t, locker.LockTryDo(func() {
+				i = 1
+			}))
+			assert.Equal(t, 1, i)
+		})
+		t.Run("false", func(t *testing.T) {
+			locker := &Mutex{}
+			i := 0
+			var wg0 sync.WaitGroup
+			var wg1 sync.WaitGroup
+			wg0.Add(1)
+			wg1.Add(1)
+			go locker.LockDo(func() {
+				wg1.Done()
+				wg0.Wait()
+			})
+			wg1.Wait()
+			assert.False(t, locker.LockTryDo(func() {
+				i = 1
+			}))
+			assert.Equal(t, 0, i)
+			wg0.Done()
+		})
+	})
+	t.Run("LockCtxDo", func(t *testing.T) {
+		t.Run("true", func(t *testing.T) {
+			locker := &Mutex{}
+			i := 0
+			assert.True(t, locker.LockCtxDo(context.Background(), func() {
+				i = 1
+			}))
+			assert.Equal(t, 1, i)
+		})
+		t.Run("false", func(t *testing.T) {
+			locker := &Mutex{}
+			i := 0
+			var wg0 sync.WaitGroup
+			var wg1 sync.WaitGroup
+			wg0.Add(1)
+			wg1.Add(1)
+			go locker.LockDo(func() {
+				wg1.Done()
+				wg0.Wait()
+			})
+			wg1.Wait()
+			ctx, cancelFn := context.WithDeadline(context.Background(), time.Now().Add(time.Microsecond))
+			defer cancelFn()
+			assert.False(t, locker.LockCtxDo(ctx, func() {
+				i = 1
+			}))
+			assert.Equal(t, 0, i)
+			wg0.Done()
+		})
 	})
 }

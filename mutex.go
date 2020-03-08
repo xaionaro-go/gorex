@@ -1,6 +1,7 @@
 package gorex
 
 import (
+	"context"
 	"sync"
 
 	"github.com/xaionaro-go/spinlock"
@@ -20,6 +21,27 @@ type Mutex struct {
 // Lock is analog of `(*sync.Mutex)`.Lock, but it allows one goroutine
 // to call it multiple times without calling Unlock.
 func (m *Mutex) Lock() {
+	m.lock(nil, true)
+}
+
+// LockTry is analog of Lock(), but it does not block if it cannot lock
+// right away.
+//
+// Returns `false` if was unable to lock.
+func (m *Mutex) LockTry() bool {
+	return m.lock(nil, false)
+}
+
+// LockCtx is analog of Lock(), but allows to continue the try to lock only until context is done..
+//
+// Returns `false` if was unable to lock (context finished before it was possible to lock).
+func (m *Mutex) LockCtx(ctx context.Context) bool {
+	return m.lock(ctx, true)
+}
+
+var infiniteContext = context.Background()
+
+func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
 	me := GetG()
 
 	for {
@@ -29,7 +51,7 @@ func (m *Mutex) Lock() {
 			m.monopolizedDepth++
 			m.internalLocker.Unlock()
 			m.backendLocker.Lock()
-			return
+			return true
 		}
 		monopolizedByMe := m.monopolizedBy == me
 		var ch chan struct{}
@@ -44,10 +66,18 @@ func (m *Mutex) Lock() {
 		}
 		m.internalLocker.Unlock()
 		if monopolizedByMe {
-			return
+			return true
+		}
+		if !shouldWait {
+			return false
+		}
+		if ctx == nil {
+			ctx = infiniteContext
 		}
 		select {
 		case <-ch:
+		case <-ctx.Done():
+			return false
 		}
 	}
 }
@@ -83,4 +113,32 @@ func (m *Mutex) LockDo(fn func()) {
 	defer m.Unlock()
 
 	fn()
+}
+
+// LockTryDo is a wrapper around LockTry and Unlock.
+//
+// See also LockDo and LockTry.
+func (m *Mutex) LockTryDo(fn func()) (success bool) {
+	if !m.LockTry() {
+		return false
+	}
+	defer m.Unlock()
+
+	success = true
+	fn()
+	return
+}
+
+// LockCtxDo is a wrapper around LockCtx and Unlock.
+//
+// See also LockDo and LockCtx.
+func (m *Mutex) LockCtxDo(ctx context.Context, fn func()) (success bool) {
+	if !m.LockCtx(ctx) {
+		return false
+	}
+	defer m.Unlock()
+
+	success = true
+	fn()
+	return
 }

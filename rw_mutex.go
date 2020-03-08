@@ -1,6 +1,7 @@
 package gorex
 
 import (
+	"context"
 	"math"
 	"sync"
 
@@ -39,8 +40,31 @@ func (m *RWMutex) lazyInit() {
 // Lock is analog of `(*sync.RWMutex)`.Lock, but it allows one goroutine
 // to call it and RLock multiple times without calling Unlock/RUnlock.
 func (m *RWMutex) Lock() {
+	m.lock(nil, true)
+}
+
+// LockTry is analog of Lock(), but it does not block if it cannot lock
+// right away.
+//
+// Returns `false` if was unable to lock.
+func (m *RWMutex) LockTry() bool {
+	return m.lock(nil, false)
+}
+
+// LockCtx is analog of Lock(), but allows to continue the try to lock only until context is done.
+//
+// Returns `false` if was unable to lock (context finished before it was possible to lock).
+func (m *RWMutex) LockCtx(ctx context.Context) bool {
+	return m.lock(ctx, true)
+}
+
+func (m *RWMutex) lock(ctx context.Context, shouldWait bool) bool {
 	m.lazyInit()
 	me := GetG()
+
+	if ctx == nil {
+		ctx = infiniteContext
+	}
 
 	for {
 		m.internalLocker.Lock()
@@ -50,7 +74,7 @@ func (m *RWMutex) Lock() {
 			m.internalLocker.Unlock()
 			m.backendLocker.Lock()
 			m.setStateBlockedByWriter(me)
-			return
+			return true
 		}
 		monopolizedByMe := m.monopolizedBy == me
 		var ch chan struct{}
@@ -65,10 +89,15 @@ func (m *RWMutex) Lock() {
 		}
 		m.internalLocker.Unlock()
 		if monopolizedByMe {
-			return
+			return true
+		}
+		if !shouldWait {
+			return false
 		}
 		select {
 		case <-ch:
+		case <-ctx.Done():
+			return false
 		}
 	}
 }
@@ -108,6 +137,34 @@ func (m *RWMutex) LockDo(fn func()) {
 	defer m.Unlock()
 
 	fn()
+}
+
+// LockTryDo is a wrapper around LockTry and Unlock.
+//
+// See also LockDo and LockTry.
+func (m *RWMutex) LockTryDo(fn func()) (success bool) {
+	if !m.LockTry() {
+		return false
+	}
+	defer m.Unlock()
+
+	success = true
+	fn()
+	return
+}
+
+// LockCtxDo is a wrapper around LockCtx and Unlock.
+//
+// See also LockDo and LockCtx.
+func (m *RWMutex) LockCtxDo(ctx context.Context, fn func()) (success bool) {
+	if !m.LockCtx(ctx) {
+		return false
+	}
+	defer m.Unlock()
+
+	success = true
+	fn()
+	return
 }
 
 func (m *RWMutex) setStateBlockedByWriter(me *G) {
@@ -205,8 +262,30 @@ func (m *RWMutex) decMyReaders(me *G) {
 // RLock is analog of `(*sync.RWMutex)`.RLock, but it allows one goroutine
 // to call Lock and RLock multiple times without calling Unlock/RUnlock.
 func (m *RWMutex) RLock() {
+	m.rLock(nil, true)
+}
+
+// RLockTry is analog of RLock(), but it does not block if it cannot lock
+// right away.
+//
+// Returns `false` if was unable to lock.
+func (m *RWMutex) RLockTry() bool {
+	return m.rLock(nil, false)
+}
+
+// RLockCtx is analog of RLock(), but allows to continue the try to lock only until context is done.
+//
+// Returns `false` if was unable to lock.
+func (m *RWMutex) RLockCtx(ctx context.Context) bool {
+	return m.rLock(ctx, true)
+}
+
+func (m *RWMutex) rLock(ctx context.Context, shouldWait bool) bool {
 	m.lazyInit()
 	me := GetG()
+	if ctx == nil {
+		ctx = infiniteContext
+	}
 
 	for {
 		m.internalLocker.Lock()
@@ -221,6 +300,11 @@ func (m *RWMutex) RLock() {
 		}
 
 		m.state--
+		if !shouldWait {
+			m.internalLocker.Unlock()
+			return false
+		}
+
 		if m.monopolizedDone == nil {
 			m.monopolizedDone = make(chan struct{})
 		}
@@ -229,12 +313,14 @@ func (m *RWMutex) RLock() {
 
 		select {
 		case <-ch:
+		case <-ctx.Done():
+			return false
 		}
 	}
 
 	m.incMyReaders(me)
 	m.internalLocker.Unlock()
-
+	return true
 }
 
 // RUnlock is analog of `(*sync.RWMutex)`.RUnlock, but it cannot be called
@@ -256,4 +342,32 @@ func (m *RWMutex) RLockDo(fn func()) {
 	defer m.RUnlock()
 
 	fn()
+}
+
+// RLockTryDo is a wrapper around RLockTry and RUnlock.
+//
+// See also RLockDo and RLockTry.
+func (m *RWMutex) RLockTryDo(fn func()) (success bool) {
+	if !m.RLockTry() {
+		return false
+	}
+	defer m.RUnlock()
+
+	success = true
+	fn()
+	return
+}
+
+// RLockCtxDo is a wrapper around RLockTry and RUnlock.
+//
+// See also RLockDo and RLockCtx.
+func (m *RWMutex) RLockCtxDo(ctx context.Context, fn func()) (success bool) {
+	if !m.RLockCtx(ctx) {
+		return false
+	}
+	defer m.RUnlock()
+
+	success = true
+	fn()
+	return
 }
