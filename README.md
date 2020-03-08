@@ -123,7 +123,18 @@ But sometimes it allows you to think more about strategically problems
 ("this stuff should be edited atomically, so I'll be able to...")
 instead of wasting time on tactical problems ("how to handle those locks") :)
 
-## GetG
+## Comparison with other implementations
 
-Function `GetG` is just the function used to determine which goroutine is this. Two
-different active goroutines has different pointers (returned by `GetG`).
+I found 2 other implementations:
+* https://github.com/90TechSAS/go-recursive-mutex
+* https://github.com/vxcontrol/rmx
+
+The first one is broken:
+```
+panic: unsupported go version go1.13
+```
+
+The second one sleeps in terms of millisecond, which:
+* Give good result if the lock is short-living: performance is much better (than here).
+* Continuously consumes CPU resources on long-living locks, while I'm developing an application for mobile phones and would like to avoid such problems.
+* Does not support `RLock`/`RUnlock`.
