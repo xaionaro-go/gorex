@@ -13,32 +13,37 @@ const (
 	blockedByWriter = -math.MaxInt64 + 1
 )
 
+// RWMutex is a goroutine-aware analog of sync.RWMutex, so it works
+// the same way as sync.RWMutex, but tracks which goroutine locked
+// it. So it could be locked multiple times with the same routine.
 type RWMutex struct {
 	lazyInitOnce sync.Once
 
 	usedDone         chan struct{}
 	monopolizedDone  chan struct{}
 	monopolizedDepth int
-	monopolizedBy    *g
+	monopolizedBy    *G
 
 	state          int64
 	backendLocker  sync.Mutex
 	internalLocker spinlock.Locker
-	usedBy         map[*g]*int64
+	usedBy         map[*G]*int64
 }
 
 func (m *RWMutex) lazyInit() {
 	m.lazyInitOnce.Do(func() {
-		m.usedBy = map[*g]*int64{}
+		m.usedBy = map[*G]*int64{}
 	})
 }
 
+// Lock is analog of `(*sync.RWMutex)`.Lock, but it allows one goroutine
+// to call it and RLock multiple times without calling Unlock/RUnlock.
 func (m *RWMutex) Lock() {
 	m.lazyInit()
 	me := GetG()
 
 	for {
-		var monopolizedBy *g
+		var monopolizedBy *G
 		m.internalLocker.Lock()
 		if m.monopolizedBy == nil {
 			m.monopolizedBy = me
@@ -48,9 +53,8 @@ func (m *RWMutex) Lock() {
 			m.backendLocker.Lock()
 			m.setStateBlockedByWriter(me)
 			return
-		} else {
-			monopolizedBy = m.monopolizedBy
 		}
+		monopolizedBy = m.monopolizedBy
 		monopolizedByMe := monopolizedBy == me
 		var ch chan struct{}
 		if !monopolizedByMe {
@@ -72,6 +76,8 @@ func (m *RWMutex) Lock() {
 	}
 }
 
+// Unlock is analog of `(*sync.RWMutex)`.Unlock, but it cannot be called
+// from a routine which does not hold the lock (see `Lock`).
 func (m *RWMutex) Unlock() {
 	me := GetG()
 
@@ -97,6 +103,9 @@ func (m *RWMutex) Unlock() {
 
 }
 
+// LockDo is a wrapper around Lock() and Unlock.
+// It's a handy function to see in the call stack trace which locker where was locked.
+// Also it's handy not to forget to unlock the locker.
 func (m *RWMutex) LockDo(fn func()) {
 	m.Lock()
 	defer m.Unlock()
@@ -104,7 +113,7 @@ func (m *RWMutex) LockDo(fn func()) {
 	fn()
 }
 
-func (m *RWMutex) setStateBlockedByWriter(me *g) {
+func (m *RWMutex) setStateBlockedByWriter(me *G) {
 	m.internalLocker.Lock()
 	defer m.internalLocker.Unlock()
 	for {
@@ -133,15 +142,15 @@ func (m *RWMutex) setStateBlockedByWriter(me *g) {
 
 type int64PoolT []*int64
 
-func (pool *int64PoolT) Put(v *int64) {
+func (pool *int64PoolT) put(v *int64) {
 	*v = 1
 	*pool = append(*pool, v)
 }
 
-func (pool *int64PoolT) Get() *int64 {
+func (pool *int64PoolT) get() *int64 {
 	if len(*pool) == 0 {
 		for i := 0; i < 100; i++ {
-			pool.Put(&[]int64{1}[0])
+			pool.put(&[]int64{1}[0])
 		}
 	}
 
@@ -154,9 +163,9 @@ func (pool *int64PoolT) Get() *int64 {
 
 var int64Pool = &int64PoolT{}
 
-func (m *RWMutex) incMyReaders(me *g) {
+func (m *RWMutex) incMyReaders(me *G) {
 	if v := m.usedBy[me]; v == nil {
-		m.usedBy[me] = int64Pool.Get()
+		m.usedBy[me] = int64Pool.get()
 	} else {
 		*v++
 	}
@@ -177,7 +186,7 @@ func (m *RWMutex) gc() {
 	}
 }
 
-func (m *RWMutex) decMyReaders(me *g) {
+func (m *RWMutex) decMyReaders(me *G) {
 	v := m.usedBy[me]
 	*v--
 	if *v != 0 {
@@ -190,9 +199,11 @@ func (m *RWMutex) decMyReaders(me *g) {
 	}
 	close(ch)
 	m.usedDone = nil
-	int64Pool.Put(v)
+	int64Pool.put(v)
 }
 
+// RLock is analog of `(*sync.RWMutex)`.RLock, but it allows one goroutine
+// to call Lock and RLock multiple times without calling Unlock/RUnlock.
 func (m *RWMutex) RLock() {
 	m.lazyInit()
 	me := GetG()
@@ -226,6 +237,8 @@ func (m *RWMutex) RLock() {
 
 }
 
+// RUnlock is analog of `(*sync.RWMutex)`.RUnlock, but it cannot be called
+// from a routine which does not hold the lock (see `RLock`).
 func (m *RWMutex) RUnlock() {
 	me := GetG()
 
@@ -235,6 +248,9 @@ func (m *RWMutex) RUnlock() {
 	m.internalLocker.Unlock()
 }
 
+// RLockDo is a wrapper around RLock() and RUnlock.
+// It's a handy function to see in the call stack trace which locker where was locked.
+// Also it's handy not to forget to unlock the locker.
 func (m *RWMutex) RLockDo(fn func()) {
 	m.RLock()
 	defer m.RUnlock()

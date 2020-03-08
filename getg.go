@@ -4,8 +4,10 @@ import (
 	exposedRuntime "github.com/huandu/go-tls/g"
 )
 
-type g struct{}
+// G is just a placeholder. It was supposed to be an alias to runtime.g.
+type G struct{}
 
-func GetG() *g {
-	return (*g)(exposedRuntime.G())
+// GetG is an alias to runtime.getg
+func GetG() *G {
+	return (*G)(exposedRuntime.G())
 }

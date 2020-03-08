@@ -6,19 +6,24 @@ import (
 	"github.com/xaionaro-go/spinlock"
 )
 
+// Mutex is a goroutine-aware analog of sync.Mutex, so it works
+// the same way as sync.Mutex, but tracks which goroutine locked
+// it. So it could be locked multiple times with the same routine.
 type Mutex struct {
 	backendLocker    sync.Mutex
 	internalLocker   spinlock.Locker
-	monopolizedBy    *g
+	monopolizedBy    *G
 	monopolizedDepth int
 	monopolizedDone  chan struct{}
 }
 
+// Lock is analog of `(*sync.Mutex)`.Lock, but it allows one goroutine
+// to call it multiple times without calling Unlock.
 func (m *Mutex) Lock() {
 	me := GetG()
 
 	for {
-		var monopolizedBy *g
+		var monopolizedBy *G
 		m.internalLocker.Lock()
 		if m.monopolizedBy == nil {
 			m.monopolizedBy = me
@@ -27,9 +32,8 @@ func (m *Mutex) Lock() {
 			m.internalLocker.Unlock()
 			m.backendLocker.Lock()
 			return
-		} else {
-			monopolizedBy = m.monopolizedBy
 		}
+		monopolizedBy = m.monopolizedBy
 		monopolizedByMe := monopolizedBy == me
 		var ch chan struct{}
 		if !monopolizedByMe {
@@ -51,6 +55,8 @@ func (m *Mutex) Lock() {
 	}
 }
 
+// Unlock is analog of `(*sync.Mutex)`.Unlock, but it cannot be called
+// from a routine which does not hold the lock (see `Lock`).
 func (m *Mutex) Unlock() {
 	me := GetG()
 	m.internalLocker.Lock()
@@ -72,6 +78,9 @@ func (m *Mutex) Unlock() {
 	close(chPtr)
 }
 
+// LockDo is a wrapper around Lock() and Unlock.
+// It's a handy function to see in the call stack trace which locker where was locked.
+// Also it's handy not to forget to unlock the locker.
 func (m *Mutex) LockDo(fn func()) {
 	m.Lock()
 	defer m.Unlock()
