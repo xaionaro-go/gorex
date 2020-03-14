@@ -86,10 +86,9 @@ func goroutineOpenedLock(lockPtr sync.Locker, isWrite bool) {
 
 func goroutineClosedLock(lockPtr sync.Locker, isWrite bool) {
 	stor, lKey := getOrStoreDebuggerGStorage(), getDebuggerLockerKey(lockPtr, isWrite)
-	pcs, found := stor.PCS[lKey]
-	if !found {
-		return
+	pcs := stor.PCS[lKey]
+	if pcs.pcs != nil {
+		pcsPool.Put(pcs.pcs)
 	}
-	pcsPool.Put(pcs.pcs)
 	delete(stor.PCS, lKey)
 }

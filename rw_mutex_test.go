@@ -238,18 +238,20 @@ func TestRWMutex(t *testing.T) {
 		})
 		t.Run("negative", func(t *testing.T) {
 			t.Run("Lock_endOfInfinityContext", func(t *testing.T) {
-				var cancelFn context.CancelFunc
-				InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
-				defer cancelFn()
 
 				var result interface{}
 				func() {
+					var wg0 sync.WaitGroup
 					defer func() {
 						result = recover()
+						wg0.Done()
 					}()
 
 					locker := &RWMutex{}
-					var wg0 sync.WaitGroup
+					var cancelFn context.CancelFunc
+					locker.InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
+					defer cancelFn()
+
 					var wg1 sync.WaitGroup
 					wg0.Add(1)
 					wg1.Add(1)
@@ -261,22 +263,23 @@ func TestRWMutex(t *testing.T) {
 					locker.Lock()
 				}()
 
-				InfiniteContext = context.Background()
 				assert.NotNil(t, result, result)
 			})
 			t.Run("RLock_endOfInfinityContext", func(t *testing.T) {
-				var cancelFn context.CancelFunc
-				InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
-				defer cancelFn()
 
 				var result interface{}
 				func() {
+					var wg0 sync.WaitGroup
+
 					defer func() {
 						result = recover()
+						wg0.Done()
 					}()
 
+					var cancelFn context.CancelFunc
 					locker := &RWMutex{}
-					var wg0 sync.WaitGroup
+					locker.InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
+					defer cancelFn()
 					var wg1 sync.WaitGroup
 					wg0.Add(1)
 					wg1.Add(1)
@@ -290,7 +293,6 @@ func TestRWMutex(t *testing.T) {
 					locker.RLock()
 				}()
 
-				InfiniteContext = context.Background()
 				assert.NotNil(t, result, result)
 			})
 		})
@@ -307,13 +309,17 @@ func TestRWMutex(t *testing.T) {
 			wg.Add(1)
 			i := 0
 			locker.RLockDo(func() {
+				var wgInt sync.WaitGroup
+				wgInt.Add(1)
 				go locker.LockDo(func() {
 					defer wg.Done()
 					i = 2
+					wgInt.Wait()
 				})
 				locker.LockDo(func() {
 					time.Sleep(time.Microsecond)
 					i = 1
+					wgInt.Done()
 				})
 			})
 

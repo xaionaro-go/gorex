@@ -86,7 +86,7 @@ func someFunc() {
         if cond {
           return
         }
-        locker.LockDo(func() { // you will not get a deadlock here!
+        locker.LockDo(func() { // you will get a deadlock here!
             .. do write stuff ..
         })
     })
@@ -109,25 +109,25 @@ It's essentially slower than bare `sync.Mutex`/`sync.RWMutex`:
 ```
 goos: linux
 goarch: amd64
-pkg: github.com/xaionaro-go/goroutine
-Benchmark/Lock-Unlock/single/sync.Mutex-8         	33334248	        35.6 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/single/sync.RWMutex-8       	28840336	        41.5 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/single/Mutex-8              	19785918	        61.2 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/single/RWMutex-8            	12316568	        94.3 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/sync.Mutex-8       	 9204102	       129 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/sync.RWMutex-8     	 7640816	       158 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/Mutex-8            	 7252591	       158 ns/op	       4 B/op	       0 allocs/op
-Benchmark/Lock-Unlock/parallel/RWMutex-8          	 4778331	       239 ns/op	       6 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/single/sync.RWMutex-8     	34093424	        35.5 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/single/RWMutex-8          	18106015	        64.6 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/parallel/sync.RWMutex-8   	24507448	        46.4 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-RUnlock/parallel/RWMutex-8        	 9100104	       133 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-ed:Lock-Unlock/single/Mutex-8      	22485800	        47.4 ns/op	       0 B/op	       0 allocs/op
-Benchmark/Lock-ed:Lock-Unlock/single/RWMutex-8    	24491390	        48.7 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-ed:RLock-RUnlock/single/RWMutex-8 	19400768	        61.5 ns/op	       0 B/op	       0 allocs/op
-Benchmark/RLock-ed:RLock-RUnlock/parallel/RWMutex-8         	 8251312	       151 ns/op	       0 B/op	       0 allocs/op
+pkg: github.com/xaionaro-go/gorex
+Benchmark/Lock-Unlock/single/sync.Mutex-8         	77933413	        15.2 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/single/sync.RWMutex-8       	46052574	        26.1 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/single/Mutex-8              	20281420	        58.6 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/single/RWMutex-8            	13518639	        87.1 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/sync.Mutex-8       	10836991	       111 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/sync.RWMutex-8     	 9065725	       133 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/Mutex-8            	 9425310	       123 ns/op	       2 B/op	       0 allocs/op
+Benchmark/Lock-Unlock/parallel/RWMutex-8          	 5309696	       213 ns/op	       4 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/single/sync.RWMutex-8     	76609815	        15.2 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/single/RWMutex-8          	25071478	        47.9 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/parallel/sync.RWMutex-8   	25705654	        48.3 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-RUnlock/parallel/RWMutex-8        	14786738	        80.9 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-ed:Lock-Unlock/single/Mutex-8      	31392260	        38.2 ns/op	       0 B/op	       0 allocs/op
+Benchmark/Lock-ed:Lock-Unlock/single/RWMutex-8    	32588916	        37.6 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-ed:RLock-RUnlock/single/RWMutex-8 	26416754	        46.1 ns/op	       0 B/op	       0 allocs/op
+Benchmark/RLock-ed:RLock-RUnlock/parallel/RWMutex-8         	13113901	        88.7 ns/op	       0 B/op	       0 allocs/op
 PASS
-ok  	github.com/xaionaro-go/goroutine	20.463s
+ok  	github.com/xaionaro-go/gorex	20.321s
 ```
 
 But sometimes it allows you to think more about strategic problems
@@ -144,7 +144,7 @@ I recommend you to use `LockDo` instead of bare `Lock` when possible:
 
 If you already have a problem with a deadlock, then I recommend you to write
 and unit/integration test which can reproduce the deadlock situation and then
-limit by time [`gorex.InfinityContext`](https://pkg.go.dev/github.com/xaionaro-go/gorex?tab=doc#pkg-variables).
+limit by time [`gorex.DefaultInfiniteContext`](https://pkg.go.dev/github.com/xaionaro-go/gorex?tab=doc#pkg-variables).
 On a deadlock it will panic and will show the call stack trace of every routine
 which holds the lock.
 
@@ -152,7 +152,7 @@ For example in my case I saw:
 ```
 monopolized by:
 /home/xaionaro/.gimme/versions/go1.13.linux.amd64/src/runtime/proc.go:2664 (runtime.goexit1)
-panic: The InfinityContext is done...
+panic: The InfiniteContext is done...
 ```
 So it seems a routine already exited (and never released the lock). So a support
 of the build tag `deadlockdebug` was added, which will print a call

@@ -58,18 +58,18 @@ func TestMutex(t *testing.T) {
 			t.Run("endOfInfinityContext", func(t *testing.T) {
 				debugPanicOut = ioutil.Discard
 
-				var cancelFn context.CancelFunc
-				InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
-				defer cancelFn()
-
 				var result interface{}
 				func() {
+					var wg0 sync.WaitGroup
 					defer func() {
 						result = recover()
+						wg0.Done()
 					}()
 
+					var cancelFn context.CancelFunc
 					locker := &Mutex{}
-					var wg0 sync.WaitGroup
+					locker.InfiniteContext, cancelFn = context.WithDeadline(context.Background(), time.Now())
+					defer cancelFn()
 					var wg1 sync.WaitGroup
 					wg0.Add(1)
 					wg1.Add(1)
@@ -81,7 +81,6 @@ func TestMutex(t *testing.T) {
 					locker.Lock()
 				}()
 
-				InfiniteContext = context.Background()
 				assert.NotNil(t, result, result)
 			})
 		})

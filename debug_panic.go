@@ -1,7 +1,6 @@
 package gorex
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,16 +11,7 @@ import (
 //go:linkname gcallers runtime.gcallers
 func gcallers(gp *G, skip int, pcbuf []uintptr) int
 
-// InfiniteContext is used as the default context used on any try to lock if
-// a custom context is not set (see LockCtx/RLockCtx), but with the difference
-// if this context will be done, then it will panic with debugging information.
-//
-// To specify a context with deadline may be useful for unit tests.
-var InfiniteContext = context.Background()
-
 var debugPanicOut = io.Writer(os.Stderr)
-
-const exitfuncname = `runtime.goexit`
 
 func printGCallStack(g *G) {
 	pcbuf := make([]uintptr, 65536)
@@ -42,13 +32,17 @@ func printFrames(frames *runtime.Frames) {
 
 func debugPanic(locker interface{}, monopolizedBy *G, usedBy map[*G]*int64) {
 	if monopolizedBy != nil {
-		fmt.Fprintln(debugPanicOut, "monopolized by:")
+		fmt.Fprintf(debugPanicOut, "monopolized %p:%+v by:\n", locker, locker)
 		printGCallStack(monopolizedBy)
 	}
 
 	for g, count := range usedBy {
-		fmt.Fprintf(debugPanicOut, "reader with count %d by\n", *count)
+		fmt.Fprintf(debugPanicOut, "reader of %p:%+v with count %d by\n", locker, locker, *count)
 		printGCallStack(g)
 	}
-	panic("The InfinityContext is done...")
+
+	b := make([]byte, 1024*1024)
+	n := runtime.Stack(b, true)
+	b = b[:n]
+	panic(fmt.Sprintf("The InfiniteContext is done...\nSTACKS:\n%s\n---\nCURRENT ROUTINE:\n", b))
 }

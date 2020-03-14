@@ -2,20 +2,37 @@ package gorex
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/xaionaro-go/spinlock"
 )
 
+// DefaultInfiniteContext is used as the default context used on any try to lock if
+// a custom context is not set (see LockCtx/RLockCtx), but with the difference
+// if this context will be done, then it will panic with debugging information.
+//
+// To specify a context with deadline may be useful for unit tests.
+var DefaultInfiniteContext = context.Background()
+
 // Mutex is a goroutine-aware analog of sync.Mutex, so it works
 // the same way as sync.Mutex, but tracks which goroutine locked
 // it. So it could be locked multiple times with the same routine.
 type Mutex struct {
+	// InfiniteContext is used as the default context used on any try to lock if
+	// a custom context is not set (see LockCtx), but with the difference
+	// if this context will be done, then it will panic with debugging information.
+	//
+	// To specify a context with deadline may be useful for unit tests.
+	//
+	// The zero-value means to use DefaultInfiniteContext.
+	InfiniteContext context.Context
+
 	backendLocker    sync.Mutex
 	internalLocker   spinlock.Locker
 	monopolizedBy    *G
 	monopolizedDepth int
-	monopolizedDone  chan struct{}
+	lockDone         chan struct{}
 }
 
 // Lock is analog of `(*sync.Mutex)`.Lock, but it allows one goroutine
@@ -39,44 +56,50 @@ func (m *Mutex) LockCtx(ctx context.Context) bool {
 	return m.lock(ctx, true)
 }
 
+func (m *Mutex) infiniteContext() context.Context {
+	if m.InfiniteContext == nil {
+		return DefaultInfiniteContext
+	}
+	return m.InfiniteContext
+}
+
 func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
 	me := GetG()
 
 	for {
 		m.internalLocker.Lock()
-		if m.monopolizedBy == nil {
+		switch m.monopolizedBy {
+		case nil:
 			m.monopolizedBy = me
 			m.monopolizedDepth++
-			m.internalLocker.Unlock()
 			goroutineOpenedLock(m, true)
+			m.internalLocker.Unlock()
 			m.backendLocker.Lock()
 			return true
-		}
-		monopolizedByMe := m.monopolizedBy == me
-		var ch chan struct{}
-		if !monopolizedByMe {
-			if m.monopolizedDone == nil {
-				m.monopolizedDone = make(chan struct{})
-			}
-			ch = m.monopolizedDone
-		}
-		if monopolizedByMe {
+		case me:
 			m.monopolizedDepth++
-		}
-		m.internalLocker.Unlock()
-		if monopolizedByMe {
+			m.internalLocker.Unlock()
 			return true
 		}
 		if !shouldWait {
+			m.internalLocker.Unlock()
 			return false
 		}
-		if ctx == nil {
-			ctx = InfiniteContext
+		var ch chan struct{}
+		if m.lockDone == nil {
+			m.lockDone = make(chan struct{})
 		}
+		ch = m.lockDone
+		isInfiniteContext := false
+		if ctx == nil {
+			ctx = m.infiniteContext()
+			isInfiniteContext = true
+		}
+		m.internalLocker.Unlock()
 		select {
 		case <-ch:
 		case <-ctx.Done():
-			if ctx == InfiniteContext {
+			if isInfiniteContext {
 				m.debugPanic()
 			}
 			return false
@@ -89,9 +112,13 @@ func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
 func (m *Mutex) Unlock() {
 	me := GetG()
 	m.internalLocker.Lock()
-	if me != m.monopolizedBy {
+	switch {
+	case m.monopolizedBy == nil:
 		m.internalLocker.Unlock()
-		panic("I'm not the one, who locked this mutex")
+		panic("An attempt to unlock a non-locked mutex.")
+	case me != m.monopolizedBy:
+		m.internalLocker.Unlock()
+		panic(fmt.Sprintf("I'm not the one, who locked this mutex: %p != %p", me, m.monopolizedBy))
 	}
 	m.monopolizedDepth--
 	if m.monopolizedDepth == 0 {
@@ -99,8 +126,8 @@ func (m *Mutex) Unlock() {
 		goroutineClosedLock(m, true)
 		m.backendLocker.Unlock()
 	}
-	chPtr := m.monopolizedDone
-	m.monopolizedDone = nil
+	chPtr := m.lockDone
+	m.lockDone = nil
 	m.internalLocker.Unlock()
 	if chPtr == nil {
 		return
