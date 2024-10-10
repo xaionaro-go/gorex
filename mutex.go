@@ -15,6 +15,17 @@ import (
 // To specify a context with deadline may be useful for unit tests.
 var DefaultInfiniteContext = context.Background()
 
+// ProgramCounter is an address of an executable instruction.
+//
+// For more details see also runtime.FuncForPC.
+type ProgramCounter = int
+
+const (
+	// MaxStackTrace is the maximal depth of the stacktrace stored in the locker
+	// (that is used during panics if a deadlock was reached).
+	MaxStackTrace = 4
+)
+
 // Mutex is a goroutine-aware analog of sync.Mutex, so it works
 // the same way as sync.Mutex, but tracks which goroutine locked
 // it. So it could be locked multiple times with the same routine.
@@ -28,11 +39,12 @@ type Mutex struct {
 	// The zero-value means to use DefaultInfiniteContext.
 	InfiniteContext context.Context
 
-	backendLocker    sync.Mutex
-	internalLocker   spinlock.Locker
-	monopolizedBy    *G
-	monopolizedDepth int
-	lockDone         chan struct{}
+	backendLocker          sync.Mutex
+	internalLocker         spinlock.Locker
+	monopolizedBy          GoroutineID
+	monopolizedDepth       int
+	monopolizedStackStrace [MaxStackTrace]ProgramCounter
+	lockDone               chan struct{}
 }
 
 // Lock is analog of `(*sync.Mutex)`.Lock, but it allows one goroutine
@@ -64,12 +76,12 @@ func (m *Mutex) infiniteContext() context.Context {
 }
 
 func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
-	me := GetG()
+	me := GetGoroutineID()
 
 	for {
 		m.internalLocker.Lock()
 		switch m.monopolizedBy {
-		case nil:
+		case 0:
 			m.monopolizedBy = me
 			m.monopolizedDepth++
 			goroutineOpenedLock(m, true)
@@ -110,19 +122,19 @@ func (m *Mutex) lock(ctx context.Context, shouldWait bool) bool {
 // Unlock is analog of `(*sync.Mutex)`.Unlock, but it cannot be called
 // from a routine which does not hold the lock (see `Lock`).
 func (m *Mutex) Unlock() {
-	me := GetG()
+	me := GetGoroutineID()
 	m.internalLocker.Lock()
 	switch {
-	case m.monopolizedBy == nil:
+	case m.monopolizedBy == 0:
 		m.internalLocker.Unlock()
 		panic("An attempt to unlock a non-locked mutex.")
 	case me != m.monopolizedBy:
 		m.internalLocker.Unlock()
-		panic(fmt.Sprintf("I'm not the one, who locked this mutex: %p != %p", me, m.monopolizedBy))
+		panic(fmt.Sprintf("I'm not the one, who locked this mutex: %X != %X", me, m.monopolizedBy))
 	}
 	m.monopolizedDepth--
 	if m.monopolizedDepth == 0 {
-		m.monopolizedBy = nil
+		m.monopolizedBy = 0
 		goroutineClosedLock(m, true)
 		m.backendLocker.Unlock()
 	}
@@ -176,5 +188,5 @@ func (m *Mutex) LockCtxDo(ctx context.Context, fn func()) (success bool) {
 func (m *Mutex) debugPanic() {
 	m.internalLocker.Lock()
 	defer m.internalLocker.Unlock()
-	debugPanic(m, m.monopolizedBy, nil)
+	debugPanic(m.monopolizedBy, nil)
 }

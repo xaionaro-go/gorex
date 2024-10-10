@@ -26,18 +26,18 @@ type RWMutex struct {
 	rlockDone      chan struct{}
 	lockDone       chan struct{}
 	lockCount      int
-	lockedBy       *G
+	lockedBy       GoroutineID
 	rlockCount     int64
 	backendLocker  sync.Mutex
 	internalLocker spinlock.Locker
-	usedBy         map[*G]*int64
+	usedBy         map[GoroutineID]*int64
 	int64Pool      int64Pool
 	gcCallCount    uint8
 }
 
 func (m *RWMutex) lazyInit() {
 	m.lazyInitOnce.Do(func() {
-		m.usedBy = map[*G]*int64{}
+		m.usedBy = map[GoroutineID]*int64{}
 	})
 }
 
@@ -73,7 +73,7 @@ func (m *RWMutex) infiniteContext() context.Context {
 
 func (m *RWMutex) lock(ctx context.Context, shouldWait bool) bool {
 	m.lazyInit()
-	me := GetG()
+	me := GetGoroutineID()
 
 	m.internalLocker.Lock()
 	if m.lockedBy == me {
@@ -92,7 +92,11 @@ func (m *RWMutex) lock(ctx context.Context, shouldWait bool) bool {
 	return true
 }
 
-func (m *RWMutex) setLockedByMe(ctx context.Context, me *G, shouldWait bool) (result bool) {
+func (m *RWMutex) setLockedByMe(
+	ctx context.Context,
+	me GoroutineID,
+	shouldWait bool,
+) (result bool) {
 	defer func() {
 		if !result {
 			return
@@ -145,21 +149,21 @@ func (m *RWMutex) setLockedByMe(ctx context.Context, me *G, shouldWait bool) (re
 // Unlock is analog of `(*sync.RWMutex)`.Unlock, but it cannot be called
 // from a routine which does not hold the lock (see `Lock`).
 func (m *RWMutex) Unlock() {
-	me := GetG()
+	me := GetGoroutineID()
 
 	m.internalLocker.Lock()
 	switch {
-	case m.lockedBy == nil:
+	case m.lockedBy == 0:
 		m.internalLocker.Unlock()
 		panic("An attempt to unlock a non-locked mutex.")
 	case me != m.lockedBy:
 		m.internalLocker.Unlock()
-		panic(fmt.Sprintf("I'm not the one, who locked this mutex: %p != %p", me, m.lockedBy))
+		panic(fmt.Sprintf("I'm not the one, who locked this mutex: %X != %X", me, m.lockedBy))
 	}
 
 	m.lockCount--
 	if m.lockCount == 0 {
-		m.lockedBy = nil
+		m.lockedBy = 0
 		goroutineClosedLock(m, true)
 		m.backendLocker.Unlock()
 	}
@@ -210,7 +214,7 @@ func (m *RWMutex) LockCtxDo(ctx context.Context, fn func()) (success bool) {
 	return
 }
 
-func (m *RWMutex) incMyReaders(me *G) {
+func (m *RWMutex) incMyReaders(me GoroutineID) {
 	if v := m.usedBy[me]; v == nil {
 		m.usedBy[me] = m.int64Pool.get()
 		goroutineOpenedLock(m, false)
@@ -235,7 +239,7 @@ func (m *RWMutex) gc() {
 	}
 }
 
-func (m *RWMutex) decMyReaders(me *G) {
+func (m *RWMutex) decMyReaders(me GoroutineID) {
 	m.rlockCount--
 	v := m.usedBy[me]
 	if v == nil || *v == 0 {
@@ -276,9 +280,12 @@ func (m *RWMutex) RLockCtx(ctx context.Context) bool {
 	return m.rLock(ctx, true)
 }
 
-func (m *RWMutex) rLock(ctx context.Context, shouldWait bool) bool {
+func (m *RWMutex) rLock(
+	ctx context.Context,
+	shouldWait bool,
+) bool {
 	m.lazyInit()
-	me := GetG()
+	me := GetGoroutineID()
 
 	m.internalLocker.Lock()
 	for {
@@ -325,7 +332,7 @@ func (m *RWMutex) rLock(ctx context.Context, shouldWait bool) bool {
 // RUnlock is analog of `(*sync.RWMutex)`.RUnlock, but it cannot be called
 // from a routine which does not hold the lock (see `RLock`).
 func (m *RWMutex) RUnlock() {
-	me := GetG()
+	me := GetGoroutineID()
 
 	m.internalLocker.Lock()
 	m.decMyReaders(me)
@@ -373,5 +380,5 @@ func (m *RWMutex) RLockCtxDo(ctx context.Context, fn func()) (success bool) {
 func (m *RWMutex) debugPanic() {
 	m.internalLocker.Lock()
 	defer m.internalLocker.Unlock()
-	debugPanic(m, m.lockedBy, m.usedBy)
+	debugPanic(m.lockedBy, m.usedBy)
 }

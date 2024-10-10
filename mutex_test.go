@@ -56,11 +56,7 @@ func TestMutex(t *testing.T) {
 		})
 		t.Run("negative", func(t *testing.T) {
 			t.Run("endOfInfinityContext", func(t *testing.T) {
-				var panicOut strings.Builder
-				debugPanicOut = &panicOut
-				defer func() {
-					debugPanicOut = io.Discard
-				}()
+				debugPanicOut = io.Discard
 
 				var result interface{}
 				func() {
@@ -86,9 +82,6 @@ func TestMutex(t *testing.T) {
 				}()
 
 				assert.NotNil(t, result, result)
-				if GO_VERSION != ">=go1.23" {
-					assert.Contains(t, panicOut.String(), "sync.(*WaitGroup).Wait")
-				}
 			})
 		})
 	})
