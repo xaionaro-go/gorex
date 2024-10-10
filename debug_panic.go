@@ -8,9 +8,6 @@ import (
 	_ "unsafe" // for "go:linkname"
 )
 
-//go:linkname gcallers runtime.gcallers
-func gcallers(gp *G, skip int, pcbuf []uintptr) int
-
 var debugPanicOut = io.Writer(os.Stderr)
 
 func printGCallStack(g *G) {

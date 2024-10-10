@@ -1,3 +1,4 @@
+//go:build !deadlockdebug
 // +build !deadlockdebug
 
 package gorex
